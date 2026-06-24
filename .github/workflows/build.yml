@@ -14,11 +14,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install build deps
-        run: pip install pyinstaller pystray Pillow pygame edge-tts pycaw comtypes
-
-      - name: Generate Vietnamese stretching voices (edge-tts)
-        run: python generate_voice.py
-        continue-on-error: true
+        run: pip install pyinstaller pystray Pillow pygame pycaw comtypes
 
       - name: Build single-file exe (windowed, background)
         run: >
