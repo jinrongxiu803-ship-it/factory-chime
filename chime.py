@@ -152,7 +152,22 @@ def _play_sound(path):
                 print("\a")
     except Exception as e:
         print("sound error:", e)
-CONFIG_PATH = os.path.join(APP_DIR, "chime_config.json")
+def _config_dir():
+    """설정 저장 폴더 — 쓰기 권한 안전한 사용자 폴더(APPDATA).
+    exe 를 Program Files 등 권한 폴더에 둬도 설정이 저장되도록."""
+    if os.name == "nt":
+        base = os.environ.get("APPDATA") or os.path.expanduser("~")
+        d = os.path.join(base, "FactoryChime")
+    else:
+        d = os.path.join(os.path.expanduser("~"), ".factorychime")
+    try:
+        os.makedirs(d, exist_ok=True)
+    except Exception:
+        d = APP_DIR  # 폴백: exe 옆
+    return d
+
+
+CONFIG_PATH = os.path.join(_config_dir(), "chime_config.json")
 
 def default_config():
     return {
@@ -247,6 +262,14 @@ class ChimeEngine:
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
+        # PC 절전/잠자기 방지 (잠들면 그 시각 벨을 놓침) — Windows
+        if os.name == "nt":
+            try:
+                import ctypes
+                # ES_CONTINUOUS(0x80000000) | ES_SYSTEM_REQUIRED(0x1)
+                ctypes.windll.kernel32.SetThreadExecutionState(0x80000001)
+            except Exception:
+                pass
         self.cfg = load_config()
         self.lang = self.cfg.get("language", "ko")
         self._lock = threading.Lock()
@@ -391,6 +414,7 @@ class App(tk.Tk):
         with self._lock:
             self.cfg["language"] = self.lang
         self._apply_language()
+        self._autosave()
 
     def _apply_language(self):
         self.title(self.t("title"))
@@ -436,10 +460,12 @@ class App(tk.Tk):
     def _toggle_enabled(self):
         with self._lock:
             self.cfg["enabled"] = self.enabled_var.get()
+        self._autosave()
 
     def _toggle_stretch(self):
         with self._lock:
             self.cfg["stretch_enabled"] = self.stretch_enabled_var.get()
+        self._autosave()
 
     def _reload_stretch_times(self):
         self.stretch_list.delete(0, tk.END)
@@ -457,6 +483,7 @@ class App(tk.Tk):
         times.add(tt)
         self.cfg["stretch_times"] = sorted(times)
         self._reload_stretch_times()
+        self._autosave()
 
     def _stretch_del(self):
         sel = self.stretch_list.curselection()
@@ -465,11 +492,13 @@ class App(tk.Tk):
         tt = self.stretch_list.get(sel[0])
         self.cfg["stretch_times"] = [x for x in self.cfg.get("stretch_times", []) if x != tt]
         self._reload_stretch_times()
+        self._autosave()
 
     def _pick_sound(self):
         p = filedialog.askopenfilename(filetypes=[("WAV", "*.wav"), ("All", "*.*")])
         if p:
             self.sound_var.set(p)
+            self._autosave()
 
     def _valid_time(self, s):
         try:
@@ -496,6 +525,7 @@ class App(tk.Tk):
         lst.add(tt)
         self.cfg["weekday_schedules"][wd] = sorted(lst)
         self._load_weekday(self.wd_var.get())
+        self._autosave()
 
     def _wd_del(self):
         sel = self.wd_list.curselection()
@@ -505,6 +535,7 @@ class App(tk.Tk):
         wd = str(self.wd_var.get())
         self.cfg["weekday_schedules"][wd] = [x for x in self.cfg["weekday_schedules"].get(wd, []) if x != tt]
         self._load_weekday(self.wd_var.get())
+        self._autosave()
 
     def _load_date(self):
         d = self.date_entry.get().strip()
@@ -532,6 +563,7 @@ class App(tk.Tk):
         lst.add(tt)
         self.cfg["date_overrides"][d] = sorted(lst)
         self._load_date()
+        self._autosave()
 
     def _date_del(self):
         sel = self.date_list.curselection()
@@ -541,6 +573,7 @@ class App(tk.Tk):
         tt = self.date_list.get(sel[0])
         self.cfg["date_overrides"][d] = [x for x in self.cfg["date_overrides"].get(d, []) if x != tt]
         self._load_date()
+        self._autosave()
 
     def _date_holiday(self):
         d = self.date_entry.get().strip()
@@ -551,16 +584,24 @@ class App(tk.Tk):
             return
         self.cfg["date_overrides"][d] = []
         self._load_date()
+        self._autosave()
         messagebox.showinfo(self.t("done"), "%s %s" % (d, self.t('holiday_done')))
 
-    def _save_all(self):
-        with self._lock:
+    def _autosave(self):
+        """변경 즉시 자동 저장 (저장 버튼을 안 눌러도 설정 유지)."""
+        try:
             self.cfg["enabled"] = self.enabled_var.get()
             self.cfg["sound_file"] = self.sound_var.get().strip()
             self.cfg["language"] = self.lang
             self.cfg["stretch_enabled"] = self.stretch_enabled_var.get()
-            # stretch_times 는 추가/삭제 시 이미 self.cfg 에 반영됨
+            # weekday_schedules / date_overrides / stretch_times 는
+            # 추가·삭제 시 이미 self.cfg 에 반영돼 있음
             save_config(self.cfg)
+        except Exception:
+            pass
+
+    def _save_all(self):
+        self._autosave()
         self.status_var.set(self.t("saved"))
         self.after(2000, lambda: self.status_var.set(self.t("waiting")))
 
@@ -668,6 +709,34 @@ def _ensure_desktop_shortcut():
         print("바탕화면 바로가기 생성 경고:", e)
 
 
+def _start_zalo_muter():
+    """Zalo 오디오를 주기적으로 음소거(완전 차단 고정). Windows 전용.
+    Zalo 를 나중에 켜거나 사용자가 음소거를 풀어도 8초마다 다시 음소거한다.
+    pycaw 미설치 시 조용히 비활성화(프로그램 나머지 정상)."""
+    if os.name != "nt":
+        return
+
+    def _loop():
+        while True:
+            try:
+                from pycaw.pycaw import AudioUtilities, ISimpleAudioVolume
+                for s in AudioUtilities.GetAllSessions():
+                    try:
+                        proc = s.Process
+                        name = (proc.name() if proc else "") or ""
+                        if "zalo" in name.lower():
+                            vol = s._ctl.QueryInterface(ISimpleAudioVolume)
+                            vol.SetMute(1, None)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            import time as _t
+            _t.sleep(8)
+
+    threading.Thread(target=_loop, daemon=True).start()
+
+
 if __name__ == "__main__":
     # 실행 인자:
     #   (없음)   → 백그라운드 모드: 창 숨기고 트레이 상주 (자동 시작용)
@@ -707,6 +776,9 @@ if __name__ == "__main__":
 
     app = App()
     tray_ok = app.setup_tray()
+
+    # ---- Zalo 음소거 고정 (프로그램 실행 중 계속 음소거 강제) ----
+    _start_zalo_muter()
 
     # ---- 설정창 열기 신호 폴링 (바탕화면 아이콘 더블클릭 시) ----
     def _poll_show_signal():

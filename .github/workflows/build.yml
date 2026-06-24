@@ -14,14 +14,22 @@ jobs:
           python-version: '3.12'
 
       - name: Install build deps
-        run: pip install pyinstaller pystray Pillow
+        run: pip install pyinstaller pystray Pillow pygame edge-tts pycaw comtypes
+
+      - name: Generate Vietnamese stretching voices (edge-tts)
+        run: python generate_voice.py
+        continue-on-error: true
 
       - name: Build single-file exe (windowed, background)
         run: >
           pyinstaller --onefile --windowed --name FactoryChime
           --add-data "school_bell.wav;."
           --add-data "relax_music.wav;."
+          --add-data "voices;voices"
           --hidden-import pystray._win32
+          --hidden-import pygame
+          --collect-all pycaw
+          --collect-all comtypes
           chime.py
 
       - name: Upload exe
