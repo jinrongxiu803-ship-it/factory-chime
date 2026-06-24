@@ -3,6 +3,9 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -29,9 +32,17 @@ jobs:
           --collect-all comtypes
           chime.py
 
-      - name: Upload exe
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: FactoryChime-exe
           path: dist/FactoryChime.exe
           if-no-files-found: error
+
+      - name: Publish to Release (direct download link)
+        shell: bash
+        run: |
+          gh release create latest dist/FactoryChime.exe -t "FactoryChime 공장 차임벨" -n "더블클릭하면 설치+백그라운드 실행" \
+            || gh release upload latest dist/FactoryChime.exe --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
