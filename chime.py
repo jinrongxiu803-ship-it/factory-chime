@@ -118,6 +118,8 @@ def _find_resource(name):
 # 설정 파일은 항상 exe(또는 스크립트) 옆에 저장 → 사용자 설정 유지
 APP_DIR = _base_dirs()[0]
 DEFAULT_SOUND = _find_resource("school_bell.wav")
+# 주요 종(시업·퇴근 등 특정 시각)에 쓰는 특별 벨소리
+SPECIAL_SOUND = _find_resource("singapore_bell.wav")
 
 
 def _resolve_sound(path):
@@ -187,6 +189,9 @@ def default_config():
             "6": [],
         },
         "date_overrides": {},
+        # 이 시각들엔 특별 벨소리(singapore_bell.wav)를 울림 — 시업·퇴근 등 주요 종
+        # 나머지 시각은 일반 벨(sound_file 또는 내장 3초 벨)
+        "special_times": ["07:30", "17:00", "18:00"],
         # 스트레칭 안내 / Hướng dẫn giãn cơ
         "stretch_enabled": True,
         "stretch_times": ["14:15"],  # 여러 개 설정 가능 / Có thể đặt nhiều giờ
@@ -248,7 +253,10 @@ class ChimeEngine:
             if cfg.get("enabled", True) and tag != self._last_fired:
                 if cur in self.today_schedule(cfg, now):
                     self._last_fired = tag
-                    _play_sound(cfg.get("sound_file", ""))
+                    if cur in cfg.get("special_times", []):
+                        _play_sound(SPECIAL_SOUND)            # 시업·퇴근 주요 종(싱가포르 벨)
+                    else:
+                        _play_sound(cfg.get("sound_file", ""))  # 일반 벨(내장 3초 벨)
             # 스트레칭 안내 (여러 시간 중 하나와 일치 시)
             if (cfg.get("stretch_enabled", True) and tag != self._last_stretch
                     and cur in cfg.get("stretch_times", ["14:15"])

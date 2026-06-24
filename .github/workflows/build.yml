@@ -20,6 +20,7 @@ jobs:
         run: >
           pyinstaller --onefile --windowed --name FactoryChime
           --add-data "school_bell.wav;."
+          --add-data "singapore_bell.wav;."
           --add-data "relax_music.wav;."
           --add-data "voices;voices"
           --hidden-import pystray._win32
