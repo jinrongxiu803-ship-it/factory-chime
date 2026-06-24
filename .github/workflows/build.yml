@@ -1,0 +1,32 @@
+name: build-exe
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install build deps
+        run: pip install pyinstaller pystray Pillow
+
+      - name: Build single-file exe (windowed, background)
+        run: >
+          pyinstaller --onefile --windowed --name FactoryChime
+          --add-data "school_bell.wav;."
+          --add-data "relax_music.wav;."
+          --hidden-import pystray._win32
+          chime.py
+
+      - name: Upload exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: FactoryChime-exe
+          path: dist/FactoryChime.exe
+          if-no-files-found: error
