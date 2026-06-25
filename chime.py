@@ -717,34 +717,6 @@ def _ensure_desktop_shortcut():
         print("바탕화면 바로가기 생성 경고:", e)
 
 
-def _start_zalo_muter():
-    """Zalo 오디오를 주기적으로 음소거(완전 차단 고정). Windows 전용.
-    Zalo 를 나중에 켜거나 사용자가 음소거를 풀어도 8초마다 다시 음소거한다.
-    pycaw 미설치 시 조용히 비활성화(프로그램 나머지 정상)."""
-    if os.name != "nt":
-        return
-
-    def _loop():
-        while True:
-            try:
-                from pycaw.pycaw import AudioUtilities, ISimpleAudioVolume
-                for s in AudioUtilities.GetAllSessions():
-                    try:
-                        proc = s.Process
-                        name = (proc.name() if proc else "") or ""
-                        if "zalo" in name.lower():
-                            vol = s._ctl.QueryInterface(ISimpleAudioVolume)
-                            vol.SetMute(1, None)
-                    except Exception:
-                        pass
-            except Exception:
-                pass
-            import time as _t
-            _t.sleep(8)
-
-    threading.Thread(target=_loop, daemon=True).start()
-
-
 if __name__ == "__main__":
     # 실행 인자:
     #   (없음)   → 백그라운드 모드: 창 숨기고 트레이 상주 (자동 시작용)
@@ -784,9 +756,6 @@ if __name__ == "__main__":
 
     app = App()
     tray_ok = app.setup_tray()
-
-    # ---- Zalo 음소거 고정 (프로그램 실행 중 계속 음소거 강제) ----
-    _start_zalo_muter()
 
     # ---- 설정창 열기 신호 폴링 (바탕화면 아이콘 더블클릭 시) ----
     def _poll_show_signal():
